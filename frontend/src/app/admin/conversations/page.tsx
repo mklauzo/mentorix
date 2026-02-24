@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { apiFetch, getToken, Conversation } from '@/lib/api'
+import { apiFetch, getToken, getCachedUser, Conversation } from '@/lib/api'
 import Link from 'next/link'
+import { Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
 import AdminLayout from '@/components/admin/AdminLayout'
 
@@ -12,6 +13,9 @@ export default function ConversationsPage() {
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const user = getCachedUser()
+  const canDelete = user?.role === 'superadmin' || user?.role === 'admin'
 
   useEffect(() => {
     const token = getToken()
@@ -22,6 +26,19 @@ export default function ConversationsPage() {
       .catch(() => router.push('/admin/login'))
       .finally(() => setLoading(false))
   }, [router, page])
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Usunąć tę rozmowę? Tej operacji nie można cofnąć.')) return
+    const token = getToken()
+    if (!token) return
+    setDeletingId(id)
+    try {
+      await apiFetch(`/admin/conversations/${id}`, { method: 'DELETE' }, token)
+      setConversations(prev => prev.filter(c => c.id !== id))
+    } finally {
+      setDeletingId(null)
+    }
+  }
 
   return (
     <AdminLayout title="Historia rozmów">
@@ -58,10 +75,22 @@ export default function ConversationsPage() {
                       {conv.user_ip_hash?.substring(0, 16)}…
                     </td>
                     <td className="px-4 py-3">
-                      <Link href={`/admin/conversations/${conv.id}`}
-                        className="text-indigo-600 hover:underline text-sm">
-                        Otwórz →
-                      </Link>
+                      <div className="flex items-center gap-3 justify-end">
+                        <Link href={`/admin/conversations/${conv.id}`}
+                          className="text-indigo-600 hover:underline text-sm">
+                          Otwórz →
+                        </Link>
+                        {canDelete && (
+                          <button
+                            onClick={() => handleDelete(conv.id)}
+                            disabled={deletingId === conv.id}
+                            title="Usuń rozmowę"
+                            className="text-gray-400 hover:text-red-500 transition-colors disabled:opacity-40"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}

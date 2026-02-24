@@ -217,6 +217,28 @@ async def list_conversations(
     return summaries
 
 
+@router.delete("/conversations/{conversation_id}", status_code=204)
+async def delete_conversation(
+    conversation_id: uuid.UUID,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> None:
+    """Delete a conversation and all its messages. Admin: own tenant only. Superadmin: any."""
+    from sqlalchemy import delete as sa_delete
+    result = await db.execute(
+        select(Conversation).where(Conversation.id == conversation_id)
+    )
+    conv = result.scalar_one_or_none()
+    if not conv:
+        raise HTTPException(status_code=404, detail="Conversation not found")
+
+    if not current_user.is_superadmin and current_user.tenant_id != conv.tenant_id:
+        raise HTTPException(status_code=403, detail="Access denied")
+
+    await db.delete(conv)
+    await db.commit()
+
+
 @router.get("/conversations/{conversation_id}/messages", response_model=list[MessageDetail])
 async def get_conversation_messages(
     conversation_id: uuid.UUID,

@@ -4,41 +4,42 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
-  LayoutDashboard, Users, MessageSquare, FileText,
-  LogOut, ChevronRight, Menu, X, Settings, Layers
+  LayoutDashboard, Users, MessageSquare,
+  LogOut, ChevronRight, Menu, Settings, Layers
 } from 'lucide-react'
 import { clearToken, getToken, getCachedUser, setCachedUser, authApi, AuthUser } from '@/lib/api'
+import { type Lang, LANGUAGES, T, getLang, setLang } from '@/lib/i18n'
 
 interface NavItem {
   href: string
-  label: string
+  labelKey: keyof typeof T['pl']
   icon: React.ReactNode
   roles?: Array<'superadmin' | 'admin' | 'user'>
 }
 
 const navItems: NavItem[] = [
-  { href: '/admin', label: 'Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
+  { href: '/admin', labelKey: 'dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
   {
     href: '/admin/profiles',
-    label: 'Profile',
+    labelKey: 'profiles',
     icon: <Layers className="w-4 h-4" />,
     roles: ['superadmin'],
   },
   {
     href: '/admin/my-profile',
-    label: 'Mój profil',
+    labelKey: 'myProfile',
     icon: <Settings className="w-4 h-4" />,
     roles: ['admin', 'user'],
   },
   {
     href: '/admin/users',
-    label: 'Użytkownicy',
+    labelKey: 'users',
     icon: <Users className="w-4 h-4" />,
     roles: ['superadmin', 'admin'],
   },
   {
     href: '/admin/conversations',
-    label: 'Rozmowy',
+    labelKey: 'conversations',
     icon: <MessageSquare className="w-4 h-4" />,
   },
 ]
@@ -65,6 +66,18 @@ export default function AdminLayout({ children, title }: Props) {
   const pathname = usePathname()
   const [user, setUser] = useState<AuthUser | null>(getCachedUser())
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [lang, setLangState] = useState<Lang>('pl')
+
+  useEffect(() => {
+    setLangState(getLang())
+  }, [])
+
+  const t = T[lang]
+
+  const switchLang = (l: Lang) => {
+    setLang(l)
+    setLangState(l)
+  }
 
   useEffect(() => {
     const token = getToken()
@@ -116,11 +129,29 @@ export default function AdminLayout({ children, title }: Props) {
             }`}
           >
             {item.icon}
-            {item.label}
+            {t[item.labelKey]}
             {isActive(item.href) && <ChevronRight className="w-3 h-3 ml-auto" />}
           </Link>
         ))}
       </nav>
+
+      {/* Language switcher */}
+      <div className="border-t px-4 py-2 flex items-center gap-1">
+        {LANGUAGES.map(l => (
+          <button
+            key={l.code}
+            onClick={() => switchLang(l.code)}
+            title={l.label}
+            className={`text-lg leading-none px-1 py-0.5 rounded transition-all ${
+              lang === l.code
+                ? 'opacity-100 ring-2 ring-indigo-400 ring-offset-1'
+                : 'opacity-40 hover:opacity-80'
+            }`}
+          >
+            {l.flag}
+          </button>
+        ))}
+      </div>
 
       {/* User info + logout */}
       {user && (
@@ -143,7 +174,7 @@ export default function AdminLayout({ children, title }: Props) {
             className="flex items-center gap-2 text-xs text-gray-500 hover:text-red-600 transition-colors w-full"
           >
             <LogOut className="w-3.5 h-3.5" />
-            Wyloguj się
+            {t.logout}
           </button>
         </div>
       )}

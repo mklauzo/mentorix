@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { apiFetch, getToken, MessageDetail } from '@/lib/api'
+import { apiFetch, getToken, getCachedUser, MessageDetail } from '@/lib/api'
 import Link from 'next/link'
+import { Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
 import AdminLayout from '@/components/admin/AdminLayout'
 
@@ -13,6 +14,9 @@ export default function ConversationThreadPage() {
   const conversationId = params.id as string
   const [messages, setMessages] = useState<MessageDetail[]>([])
   const [loading, setLoading] = useState(true)
+  const [deleting, setDeleting] = useState(false)
+  const user = getCachedUser()
+  const canDelete = user?.role === 'superadmin' || user?.role === 'admin'
 
   useEffect(() => {
     const token = getToken()
@@ -24,6 +28,19 @@ export default function ConversationThreadPage() {
       .finally(() => setLoading(false))
   }, [conversationId, router])
 
+  const handleDelete = async () => {
+    if (!confirm('Usunąć tę rozmowę? Tej operacji nie można cofnąć.')) return
+    const token = getToken()
+    if (!token) return
+    setDeleting(true)
+    try {
+      await apiFetch(`/admin/conversations/${conversationId}`, { method: 'DELETE' }, token)
+      router.push('/admin/conversations')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
   const totalTokens = messages.reduce((sum, m) => sum + (m.total_tokens || 0), 0)
 
   return (
@@ -33,11 +50,23 @@ export default function ConversationThreadPage() {
           <Link href="/admin/conversations" className="text-indigo-600 text-sm hover:underline">
             ← Historia rozmów
           </Link>
-          {totalTokens > 0 && (
-            <span className="text-xs text-gray-400">
-              Łącznie: {totalTokens.toLocaleString()} tokenów
-            </span>
-          )}
+          <div className="flex items-center gap-4">
+            {totalTokens > 0 && (
+              <span className="text-xs text-gray-400">
+                Łącznie: {totalTokens.toLocaleString()} tokenów
+              </span>
+            )}
+            {canDelete && (
+              <button
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-red-600 transition-colors disabled:opacity-40"
+              >
+                <Trash2 className="w-4 h-4" />
+                Usuń rozmowę
+              </button>
+            )}
+          </div>
         </div>
 
         <h1 className="text-2xl font-bold text-gray-900">Wątek rozmowy</h1>
