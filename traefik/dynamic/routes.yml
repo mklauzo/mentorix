@@ -1,0 +1,53 @@
+http:
+  routers:
+    # ── Backend API ──────────────────────────────────────────
+    backend:
+      rule: 'Host(`{{ env "DOMAIN" }}`) && PathPrefix(`/api`)'
+      entryPoints:
+        - websecure
+      service: backend
+      middlewares:
+        - security-headers
+      tls:
+        certResolver: letsencrypt
+
+    # ── Frontend (catch-all) ─────────────────────────────────
+    frontend:
+      rule: 'Host(`{{ env "DOMAIN" }}`)'
+      entryPoints:
+        - websecure
+      service: frontend
+      middlewares:
+        - security-headers
+      priority: 1
+      tls:
+        certResolver: letsencrypt
+
+    # ── Traefik Dashboard ────────────────────────────────────
+    dashboard:
+      rule: 'Host(`{{ env "DOMAIN" }}`) && PathPrefix(`/traefik`)'
+      entryPoints:
+        - websecure
+      service: api@internal
+      middlewares:
+        - traefik-auth
+        - security-headers
+      tls:
+        certResolver: letsencrypt
+
+  services:
+    backend:
+      loadBalancer:
+        servers:
+          - url: "http://backend:8000"
+
+    frontend:
+      loadBalancer:
+        servers:
+          - url: "http://frontend:3000"
+
+  middlewares:
+    traefik-auth:
+      basicAuth:
+        users:
+          - '{{ env "TRAEFIK_DASHBOARD_PASSWORD_HASH" }}'

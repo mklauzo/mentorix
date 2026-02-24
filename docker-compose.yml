@@ -1,0 +1,246 @@
+networks:
+  mentorix_proxy:
+    driver: bridge
+  mentorix_internal:
+    driver: bridge
+    internal: true
+
+volumes:
+  postgres_data:
+  redis_data:
+  uploads_data:
+  ollama_data:
+  prometheus_data:
+  grafana_data:
+
+x-common-security: &common-security
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+services:
+  # ── Reverse Proxy ─────────────────────────────────────────
+  traefik:
+    image: traefik:v3.3
+    <<: *common-security
+    cap_add:
+      - NET_BIND_SERVICE
+    restart: unless-stopped
+    # CLI args are interpolated by Docker Compose (reliable), unlike ${VAR} in traefik.yml YAML
+    command:
+      - "--certificatesresolvers.letsencrypt.acme.email=${ACME_EMAIL}"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./traefik/traefik.yml:/traefik.yml:ro
+      - ./traefik/dynamic:/etc/traefik/dynamic:ro
+      - ./traefik/acme.json:/acme.json
+    networks:
+      - mentorix_proxy
+    environment:
+      - DOMAIN=${DOMAIN}
+      - ACME_EMAIL=${ACME_EMAIL}
+      - TRAEFIK_DASHBOARD_PASSWORD_HASH=${TRAEFIK_DASHBOARD_PASSWORD_HASH}
+
+  # ── Ollama (local LLM) ────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    networks:
+      - mentorix_internal
+      - mentorix_proxy  # needed for pulling models (ollama pull)
+    volumes:
+      - ollama_data:/root/.ollama
+    # GPU support (uncomment if server has NVIDIA GPU):
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list > /dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 15s
+      retries: 10
+      start_period: 60s
+
+  # ── PostgreSQL + pgvector ─────────────────────────────────
+  db:
+    image: pgvector/pgvector:pg16
+    <<: *common-security
+    cap_add:
+      - CHOWN
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    restart: unless-stopped
+    networks:
+      - mentorix_internal
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Redis ─────────────────────────────────────────────────
+  redis:
+    image: redis:7-alpine
+    <<: *common-security
+    cap_add:
+      - SETGID
+      - SETUID
+    restart: unless-stopped
+    networks:
+      - mentorix_internal
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # ── FastAPI Backend ───────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    <<: *common-security
+    restart: unless-stopped
+    networks:
+      - mentorix_proxy
+      - mentorix_internal
+    volumes:
+      - uploads_data:/uploads
+    environment:
+      - DOMAIN=${DOMAIN}
+      - SECRET_KEY=${SECRET_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - IP_HASH_SALT=${IP_HASH_SALT}
+      - POSTGRES_HOST=${POSTGRES_HOST:-db}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - REDIS_URL=${REDIS_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434}
+      - ENVIRONMENT=${ENVIRONMENT:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - UPLOAD_MAX_SIZE_MB=${UPLOAD_MAX_SIZE_MB:-25}
+      - UPLOAD_DIR=${UPLOAD_DIR:-/uploads}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+      - ADMIN_CORS_ORIGINS=${ADMIN_CORS_ORIGINS}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # ── Celery Worker ─────────────────────────────────────────
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    <<: *common-security
+    restart: unless-stopped
+    networks:
+      - mentorix_internal
+      - mentorix_proxy  # needed for outbound internet (OpenAI/Anthropic/Gemini API calls)
+    volumes:
+      - uploads_data:/uploads
+    environment:
+      - SECRET_KEY=${SECRET_KEY}
+      - JWT_SECRET_KEY=${JWT_SECRET_KEY}
+      - IP_HASH_SALT=${IP_HASH_SALT}
+      - POSTGRES_HOST=${POSTGRES_HOST:-db}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - REDIS_URL=${REDIS_URL}
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - OLLAMA_URL=${OLLAMA_URL:-http://ollama:11434}
+      - UPLOAD_DIR=${UPLOAD_DIR:-/uploads}
+      - CELERY_BROKER_URL=${CELERY_BROKER_URL}
+      - CELERY_RESULT_BACKEND=${CELERY_RESULT_BACKEND}
+    command: celery -A app.tasks.celery_app worker --loglevel=info --concurrency=2 -Q document_processing
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "celery", "-A", "app.tasks.celery_app", "inspect", "ping"]
+      interval: 60s
+      timeout: 15s
+      retries: 3
+
+  # ── Next.js Frontend ──────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - NEXT_PUBLIC_API_URL=https://${DOMAIN}/api/v1
+    <<: *common-security
+    restart: unless-stopped
+    networks:
+      - mentorix_proxy
+    environment:
+      - NEXT_PUBLIC_API_URL=https://${DOMAIN}/api/v1
+    depends_on:
+      - backend
+
+  # ── Prometheus (monitoring profile) ───────────────────────
+  prometheus:
+    image: prom/prometheus:v2.54.0
+    <<: *common-security
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    networks:
+      - mentorix_internal
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+
+  # ── Grafana (monitoring profile) ──────────────────────────
+  grafana:
+    image: grafana/grafana:11.2.0
+    <<: *common-security
+    restart: unless-stopped
+    profiles: ["monitoring"]
+    networks:
+      - mentorix_proxy
+      - mentorix_internal
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      - GF_SERVER_ROOT_URL=https://${DOMAIN}/grafana
+      - GF_SERVER_SERVE_FROM_SUB_PATH=true

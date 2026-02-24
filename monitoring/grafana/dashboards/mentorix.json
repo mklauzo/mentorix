@@ -1,0 +1,58 @@
+{
+  "title": "Mentorix AI – Overview",
+  "uid": "mentorix-overview",
+  "version": 1,
+  "refresh": "30s",
+  "panels": [
+    {
+      "id": 1,
+      "title": "API Requests per Second",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "rate(http_requests_total{job=\"mentorix-backend\"}[1m])",
+          "legendFormat": "req/s"
+        }
+      ],
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 }
+    },
+    {
+      "id": 2,
+      "title": "P95 Response Time (ms)",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"mentorix-backend\"}[5m])) * 1000",
+          "legendFormat": "P95 ms"
+        }
+      ],
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 }
+    },
+    {
+      "id": 3,
+      "title": "HTTP 5xx Errors",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "rate(http_requests_total{status=~\"5..\",job=\"mentorix-backend\"}[5m])",
+          "legendFormat": "errors/s"
+        }
+      ],
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 }
+    },
+    {
+      "id": 4,
+      "title": "Request Rate by Endpoint",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(http_requests_total{job=\"mentorix-backend\"}[1m])",
+          "legendFormat": "{{handler}}"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 }
+    }
+  ],
+  "schemaVersion": 39,
+  "tags": ["mentorix"]
+}

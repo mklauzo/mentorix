@@ -1,0 +1,30 @@
+http:
+  middlewares:
+    security-headers:
+      headers:
+        stsSeconds: 31536000
+        stsIncludeSubdomains: true
+        stsPreload: true
+        forceSTSHeader: true
+        contentTypeNosniff: true
+        browserXssFilter: true
+        referrerPolicy: "strict-origin-when-cross-origin"
+        permissionsPolicy: "camera=(), microphone=(), geolocation=()"
+        customResponseHeaders:
+          X-Powered-By: ""
+          Server: ""
+
+    rate-limit-api:
+      rateLimit:
+        average: 60
+        burst: 20
+        period: 1m
+
+    rate-limit-auth:
+      rateLimit:
+        average: 5
+        burst: 5
+        period: 1m
+
+    compress:
+      compress: {}
