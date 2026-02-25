@@ -14,7 +14,8 @@ from app.schemas.chat import SourceChunk
 
 settings = get_settings()
 
-TOP_K = 5
+TOP_K = 8
+MAX_PER_DOC = 2          # max chunks from a single document
 MAX_CONTEXT_TOKENS = 3000
 ANSWER_MAX_TOKENS = 800
 TEMPERATURE = 0.2
@@ -43,27 +44,47 @@ async def retrieve_chunks(
     tenant_id: uuid.UUID,
     db: AsyncSession,
     top_k: int = TOP_K,
+    max_per_doc: int = MAX_PER_DOC,
 ) -> list[dict]:
-    """Vector similarity search using pgvector cosine distance."""
+    """Vector similarity search with per-document diversity.
+
+    Uses a window function to cap chunks per document (max_per_doc), then
+    returns the top_k most similar chunks overall. This prevents a single
+    document from monopolising the context window.
+    """
     embedding_str = "[" + ",".join(map(str, question_embedding)) + "]"
     sql = text("""
-        SELECT
-            dc.id,
-            dc.content,
-            dc.document_id,
-            d.name AS document_name,
-            1 - (dc.embedding <=> CAST(:embedding AS vector)) AS similarity
-        FROM document_chunks dc
-        JOIN documents d ON d.id = dc.document_id
-        WHERE dc.tenant_id = :tenant_id
-          AND dc.embedding IS NOT NULL
-          AND d.status = 'done'
-        ORDER BY dc.embedding <=> CAST(:embedding AS vector)
+        WITH ranked AS (
+            SELECT
+                dc.id,
+                dc.content,
+                dc.document_id,
+                d.name AS document_name,
+                1 - (dc.embedding <=> CAST(:embedding AS vector)) AS similarity,
+                ROW_NUMBER() OVER (
+                    PARTITION BY dc.document_id
+                    ORDER BY dc.embedding <=> CAST(:embedding AS vector)
+                ) AS rn
+            FROM document_chunks dc
+            JOIN documents d ON d.id = dc.document_id
+            WHERE dc.tenant_id = :tenant_id
+              AND dc.embedding IS NOT NULL
+              AND d.status = 'done'
+        )
+        SELECT id, content, document_id, document_name, similarity
+        FROM ranked
+        WHERE rn <= :max_per_doc
+        ORDER BY similarity DESC
         LIMIT :top_k
     """)
     result = await db.execute(
         sql,
-        {"embedding": embedding_str, "tenant_id": str(tenant_id), "top_k": top_k},
+        {
+            "embedding": embedding_str,
+            "tenant_id": str(tenant_id),
+            "top_k": top_k,
+            "max_per_doc": max_per_doc,
+        },
     )
     rows = result.mappings().all()
     return [dict(row) for row in rows]

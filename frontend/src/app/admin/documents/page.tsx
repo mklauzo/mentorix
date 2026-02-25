@@ -60,6 +60,22 @@ function DocumentsContent() {
     const file = e.target.files?.[0]
     if (!file || !tenantId) return
 
+    // Client-side size validation
+    const ext = '.' + (file.name.split('.').pop()?.toLowerCase() || '')
+    const isText = ['.txt', '.md', '.html', '.htm'].includes(ext)
+    const maxBytes = isText ? 1 * 1024 * 1024 : 10 * 1024 * 1024
+    const maxLabel = isText ? '1 MB' : '10 MB'
+    if (file.size > maxBytes) {
+      setError(`Plik za duży. Limit dla tego formatu: ${maxLabel}`)
+      e.target.value = ''
+      return
+    }
+    if (documents.length >= 25) {
+      setError('Osiągnięto limit 25 dokumentów dla tego profilu')
+      e.target.value = ''
+      return
+    }
+
     setUploading(true)
     setError(null)
     const token = getToken()
@@ -75,7 +91,10 @@ function DocumentsContent() {
           body: formData,
         }
       )
-      if (!res.ok) throw new Error('Błąd przesyłania')
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.detail || 'Błąd przesyłania')
+      }
       fetchDocuments()
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Błąd przesyłania')
@@ -127,9 +146,14 @@ function DocumentsContent() {
           </div>
         </div>
 
-        <p className="text-sm text-gray-500">
-          Obsługiwane formaty: PDF, DOCX, TXT, MD, HTML · Maks. 25 MB
-        </p>
+        <div className="space-y-1">
+          <p className="text-sm text-gray-500">
+            Obsługiwane formaty: PDF, DOCX (maks. 10 MB) · TXT, MD, HTML (maks. 1 MB) · Limit: {documents.length}/25 dokumentów
+          </p>
+          <p className="text-xs text-amber-600">
+            Duże dokumenty znacznie wydłużają przetwarzanie — szczególnie przy lokalnym modelu Ollama. Plik 1 MB (TXT) może generować setki chunków i blokować workera na kilka minut.
+          </p>
+        </div>
 
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-red-700 text-sm">

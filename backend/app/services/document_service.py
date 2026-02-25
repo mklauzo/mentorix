@@ -14,7 +14,16 @@ from app.services.parser_service import ALLOWED_MIME_TYPES, ALLOWED_EXTENSIONS
 
 settings = get_settings()
 
-MAX_BYTES = settings.upload_max_size_mb * 1024 * 1024
+MAX_DOCUMENTS_PER_TENANT = 25
+
+_PDF_MIME = "application/pdf"
+_PDF_EXT = ".pdf"
+_TEXT_MIMES = {"text/plain", "text/markdown", "text/x-markdown", "text/html"}
+_TEXT_EXTS = {".txt", ".md", ".html", ".htm"}
+
+_PDF_MAX_BYTES = 10 * 1024 * 1024   # 10 MB
+_TEXT_MAX_BYTES = 1 * 1024 * 1024   #  1 MB
+_DOCX_MAX_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 def sanitize_filename(filename: str) -> str:
@@ -62,12 +71,29 @@ async def save_upload(
             detail=f"Unsupported file type: {mime}",
         )
 
-    # Read and validate size
+    # Check document count limit
+    count_result = await db.execute(
+        select(func.count()).select_from(Document).where(Document.tenant_id == tenant_id)
+    )
+    if (count_result.scalar() or 0) >= MAX_DOCUMENTS_PER_TENANT:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Osiągnięto limit {MAX_DOCUMENTS_PER_TENANT} dokumentów dla tego profilu",
+        )
+
+    # Read and validate size per type
     content = await file.read()
-    if len(content) > MAX_BYTES:
+    if mime == _PDF_MIME or ext == _PDF_EXT:
+        limit, limit_label = _PDF_MAX_BYTES, "10 MB"
+    elif mime in _TEXT_MIMES or ext in _TEXT_EXTS:
+        limit, limit_label = _TEXT_MAX_BYTES, "1 MB"
+    else:
+        limit, limit_label = _DOCX_MAX_BYTES, "10 MB"
+
+    if len(content) > limit:
         raise HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-            detail=f"File too large (max {settings.upload_max_size_mb}MB)",
+            detail=f"Plik za duży (maks. {limit_label} dla tego formatu)",
         )
 
     # Save to disk
