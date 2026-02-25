@@ -160,7 +160,7 @@ export default function MyProfilePage() {
               Zarządzaj dokumentami
             </Link>
             <Link
-              href="/admin/conversations"
+              href={`/admin/conversations?tenant_id=${tenant.id}`}
               className="flex items-center gap-2 px-4 py-2 border rounded-lg text-sm hover:bg-gray-50"
             >
               Historia rozmów

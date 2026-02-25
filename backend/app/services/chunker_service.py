@@ -1,8 +1,8 @@
 """Text chunker: RecursiveCharacterTextSplitter-style implementation."""
 from typing import Generator
 
-CHUNK_SIZE = 800
-CHUNK_OVERLAP = 150
+CHUNK_SIZE = 1500
+CHUNK_OVERLAP = 200
 SEPARATORS = ["\n\n", "\n", ". ", " ", ""]
 
 

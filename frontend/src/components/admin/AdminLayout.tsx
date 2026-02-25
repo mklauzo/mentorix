@@ -37,11 +37,6 @@ const navItems: NavItem[] = [
     icon: <Users className="w-4 h-4" />,
     roles: ['superadmin', 'admin'],
   },
-  {
-    href: '/admin/conversations',
-    labelKey: 'conversations',
-    icon: <MessageSquare className="w-4 h-4" />,
-  },
 ]
 
 const ROLE_LABELS: Record<string, string> = {

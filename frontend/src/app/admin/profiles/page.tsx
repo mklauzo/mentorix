@@ -143,6 +143,12 @@ export default function ProfilesPage() {
                   >
                     Dokumenty
                   </Link>
+                  <Link
+                    href={`/admin/conversations?tenant_id=${tenant.id}`}
+                    className="flex-1 text-center text-sm text-gray-600 hover:text-indigo-600 py-1"
+                  >
+                    Rozmowy
+                  </Link>
                   <button
                     onClick={() => copyLink(tenant.id)}
                     className="text-gray-400 hover:text-indigo-600 p-1"

@@ -1,7 +1,8 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { apiFetch, getToken, getCachedUser, Conversation } from '@/lib/api'
 import Link from 'next/link'
 import { Trash2 } from 'lucide-react'
@@ -9,7 +10,18 @@ import { format } from 'date-fns'
 import AdminLayout from '@/components/admin/AdminLayout'
 
 export default function ConversationsPage() {
+  return (
+    <Suspense fallback={<AdminLayout title="Historia rozmów"><div className="p-8 text-center text-gray-400">Ładowanie...</div></AdminLayout>}>
+      <ConversationsContent />
+    </Suspense>
+  )
+}
+
+function ConversationsContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const tenantId = searchParams.get('tenant_id')
+
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [loading, setLoading] = useState(true)
   const [page, setPage] = useState(1)
@@ -21,11 +33,15 @@ export default function ConversationsPage() {
     const token = getToken()
     if (!token) { router.push('/admin/login'); return }
 
-    apiFetch<Conversation[]>(`/admin/conversations?page=${page}&per_page=20`, {}, token)
+    setLoading(true)
+    const params = new URLSearchParams({ page: String(page), per_page: '20' })
+    if (tenantId) params.set('tenant_id', tenantId)
+
+    apiFetch<Conversation[]>(`/admin/conversations?${params}`, {}, token)
       .then(setConversations)
       .catch(() => router.push('/admin/login'))
       .finally(() => setLoading(false))
-  }, [router, page])
+  }, [router, page, tenantId])
 
   const handleDelete = async (id: string) => {
     if (!confirm('Usunąć tę rozmowę? Tej operacji nie można cofnąć.')) return
@@ -40,10 +56,19 @@ export default function ConversationsPage() {
     }
   }
 
+  const backHref = user?.role === 'superadmin' ? '/admin/profiles' : '/admin/my-profile'
+
   return (
     <AdminLayout title="Historia rozmów">
       <div className="max-w-5xl mx-auto space-y-5">
-        <h1 className="text-2xl font-bold text-gray-900">Historia rozmów</h1>
+        <div className="flex items-center justify-between">
+          <div>
+            <Link href={backHref} className="text-indigo-600 text-sm hover:underline">
+              ← Wróć do profilu
+            </Link>
+            <h1 className="text-2xl font-bold text-gray-900 mt-1">Historia rozmów</h1>
+          </div>
+        </div>
 
         <div className="bg-white rounded-xl border shadow-sm overflow-hidden">
           {loading ? (

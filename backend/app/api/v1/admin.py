@@ -131,6 +131,8 @@ async def fetch_provider_models(
                     for m in resp.json().get("models", [])
                     if "gemini" in m.get("name", "")
                     and "generateContent" in m.get("supportedGenerationMethods", [])
+                    and "image" not in m.get("name", "")
+                    and "embedding" not in m.get("name", "")
                 ]
                 return {"models": models}
         except httpx.HTTPStatusError as e:
