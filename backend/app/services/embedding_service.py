@@ -78,19 +78,32 @@ async def _embed_openai(texts: list[str], api_key: str) -> tuple[list[list[float
     return all_embeddings, total_tokens
 
 
+# Characters-per-chunk limit for models with small context windows (e.g. mxbai-embed-large: 512 tokens)
+_OLLAMA_MAX_CHARS: dict[str, int] = {
+    "mxbai-embed-large": 1300,  # 512 token limit; Polish text ~3.5 chars/token → safe margin
+}
+_DEFAULT_MAX_CHARS = 6000  # nomic-embed-text: 8192 tokens
+
+
 async def _embed_ollama(texts: list[str], model: str) -> tuple[list[list[float]], int]:
     client = AsyncOpenAI(
         base_url=f"{settings.ollama_url}/v1",
         api_key="ollama",
     )
+    max_chars = _OLLAMA_MAX_CHARS.get(model, _DEFAULT_MAX_CHARS)
     all_embeddings: list[list[float]] = []
     for i in range(0, len(texts), BATCH_SIZE):
-        batch = texts[i:i + BATCH_SIZE]
+        batch = [t[:max_chars] for t in texts[i:i + BATCH_SIZE]]
         response = await client.embeddings.create(
             model=model,
             input=batch,
         )
-        all_embeddings.extend(item.embedding for item in response.data)
+        for item in response.data:
+            emb = item.embedding
+            # Truncate to 768 dims if model produces more (mxbai-embed-large → 1024 dims)
+            if len(emb) > EMBEDDING_DIM:
+                emb = emb[:EMBEDDING_DIM]
+            all_embeddings.append(emb)
     return all_embeddings, 0  # Ollama doesn't report token usage
 
 

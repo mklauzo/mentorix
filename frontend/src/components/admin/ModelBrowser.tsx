@@ -21,6 +21,7 @@ const BUILTIN_MODELS: Record<string, ProviderModel[]> = {
     { id: 'deepseek-r1:8b' },
     { id: 'nomic-embed-text' },
     { id: 'nomic-embed-text:v1.5' },
+    { id: 'mxbai-embed-large' },
   ],
   openai: [
     { id: 'gpt-4o', builtin: true },
@@ -292,7 +293,14 @@ function ProviderSection({
                   {(embModel || provider.key === 'openai') && (
                     <button
                       type="button"
-                      onClick={() => onSelectEmb(embModel ? fid : 'openai')}
+                      onClick={() => {
+                        const target = embModel ? fid : 'openai'
+                        onSelectEmb(target)
+                        // Auto-pull if Ollama embed model not yet available
+                        if (provider.key === 'ollama' && embModel && !available && state === 'idle') {
+                          onPull(m.id)
+                        }
+                      }}
                       className={`text-xs px-1.5 py-0.5 rounded transition-colors ${
                         isEmbActive
                           ? 'bg-purple-600 text-white'

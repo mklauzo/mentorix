@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { apiFetch, getToken, Tenant } from '@/lib/api'
+import { apiFetch, getToken, ollamaApi, Tenant } from '@/lib/api'
 import Link from 'next/link'
 import AdminLayout from '@/components/admin/AdminLayout'
 import ModelBrowser from '@/components/admin/ModelBrowser'
@@ -39,6 +39,35 @@ export default function TenantEditPage() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+  const [embPullState, setEmbPullState] = useState<'idle' | 'pulling' | 'done' | 'error'>('idle')
+
+  const handleEmbeddingModelChange = async (model: string) => {
+    setForm(p => ({ ...p, embedding_model: model }))
+    if (!model.startsWith('ollama:')) { setEmbPullState('idle'); return }
+    const modelName = model.replace('ollama:', '')
+    const token = getToken()
+    if (!token) return
+    try {
+      const { models } = await ollamaApi.listModels(token)
+      const available = models.some((m: string) => m === modelName || m.startsWith(modelName + ':'))
+      if (!available) {
+        setEmbPullState('pulling')
+        await ollamaApi.pullModel(token, modelName)
+        // Poll until available
+        const poll = setInterval(async () => {
+          const r = await ollamaApi.listModels(token).catch(() => ({ models: [] }))
+          if (r.models.some((m: string) => m === modelName || m.startsWith(modelName + ':'))) {
+            setEmbPullState('done')
+            clearInterval(poll)
+          }
+        }, 5000)
+      } else {
+        setEmbPullState('done')
+      }
+    } catch {
+      setEmbPullState('error')
+    }
+  }
 
 
   useEffect(() => {
@@ -152,37 +181,6 @@ export default function TenantEditPage() {
               </div>
               <p className="text-xs text-gray-500 mt-1">Wybierz poniżej w tabeli modeli.</p>
             </div>
-            <Field label="Kolor motywu">
-              <div className="flex items-center gap-2">
-                <input
-                  type="color" value={form.chat_color}
-                  onChange={e => setForm(p => ({ ...p, chat_color: e.target.value }))}
-                  className="h-10 w-14 border rounded-lg cursor-pointer p-1"
-                />
-                <span className="text-sm text-gray-500 font-mono">{form.chat_color}</span>
-              </div>
-            </Field>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Model embeddingów (RAG)" description="Do indeksowania i wyszukiwania w dokumentach RAG.">
-              <select
-                value={form.embedding_model}
-                onChange={e => setForm(p => ({ ...p, embedding_model: e.target.value }))}
-                className="input"
-              >
-                <optgroup label="🦙 Ollama – lokalny, bezpłatny">
-                  <option value="ollama:nomic-embed-text">nomic-embed-text (768 dim) – domyślny</option>
-                  <option value="ollama:nomic-embed-text:v1.5">nomic-embed-text:v1.5 (768 dim)</option>
-                </optgroup>
-                <optgroup label="☁ OpenAI (wymaga klucza sk-...)">
-                  <option value="openai">text-embedding-3-small (768 dim)</option>
-                </optgroup>
-              </select>
-              {form.embedding_model === 'openai' && (
-                <p className="text-xs text-amber-600 mt-1">⚠ Wymagany klucz OpenAI (sk-...) powyżej.</p>
-              )}
-            </Field>
             <Field
               label="Klucz API modelu"
               description="OpenAI: sk-... · Anthropic: sk-ant-... · Gemini: AIza... · Ollama: puste"
@@ -206,6 +204,47 @@ export default function TenantEditPage() {
               {providerHint && (
                 <p className="text-xs text-amber-600 mt-1">⚠ {providerHint}</p>
               )}
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field label="Model embeddingów (RAG)" description="Do indeksowania i wyszukiwania w dokumentach RAG. Po zmianie modelu usuń i wgraj dokumenty ponownie.">
+              <select
+                value={form.embedding_model}
+                onChange={e => handleEmbeddingModelChange(e.target.value)}
+                className="input"
+              >
+                <optgroup label="🦙 Ollama – lokalny, bezpłatny">
+                  <option value="ollama:nomic-embed-text">nomic-embed-text (768 dim) – domyślny</option>
+                  <option value="ollama:nomic-embed-text:v1.5">nomic-embed-text:v1.5 (768 dim)</option>
+                  <option value="ollama:mxbai-embed-large">mxbai-embed-large (768 dim) – lepsza jakość</option>
+                </optgroup>
+                <optgroup label="☁ OpenAI (wymaga klucza sk-...)">
+                  <option value="openai">text-embedding-3-small (768 dim)</option>
+                </optgroup>
+              </select>
+              {embPullState === 'pulling' && (
+                <p className="text-xs text-blue-500 mt-1 animate-pulse">Pobieranie modelu embeddingów... (może potrwać kilka minut)</p>
+              )}
+              {embPullState === 'done' && (
+                <p className="text-xs text-green-600 mt-1">Model gotowy.</p>
+              )}
+              {embPullState === 'error' && (
+                <p className="text-xs text-red-500 mt-1">Błąd pobierania — sprawdź czy Ollama działa.</p>
+              )}
+              {form.embedding_model === 'openai' && (
+                <p className="text-xs text-amber-600 mt-1">⚠ Wymagany klucz OpenAI (sk-...) w polu powyżej.</p>
+              )}
+            </Field>
+            <Field label="Kolor motywu">
+              <div className="flex items-center gap-2">
+                <input
+                  type="color" value={form.chat_color}
+                  onChange={e => setForm(p => ({ ...p, chat_color: e.target.value }))}
+                  className="h-10 w-14 border rounded-lg cursor-pointer p-1"
+                />
+                <span className="text-sm text-gray-500 font-mono">{form.chat_color}</span>
+              </div>
             </Field>
           </div>
 
@@ -316,6 +355,7 @@ const ALL_OLLAMA_MODELS = [
   { value: 'deepseek-r1:8b', label: 'deepseek-r1:8b', desc: '8B' },
   { value: 'nomic-embed-text', label: 'nomic-embed-text', desc: 'embeddingi 768 dim' },
   { value: 'nomic-embed-text:v1.5', label: 'nomic-embed-text:v1.5', desc: 'embeddingi 768 dim' },
+  { value: 'mxbai-embed-large', label: 'mxbai-embed-large', desc: 'embeddingi 768 dim – lepsza jakość' },
 ]
 
 function OllamaModelManager({ availableModels, pullState, onPull }: {

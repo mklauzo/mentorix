@@ -213,13 +213,20 @@ async def _generate_ollama(
     model: str,
 ) -> dict:
     client = _get_ollama_client()
+    # Small local models often ignore system prompts and add training knowledge.
+    # Reinforce the constraint inside the user turn AND use temperature=0.
+    user_message = (
+        f"IMPORTANT: Use ONLY the information from the context in the system prompt. "
+        f"Do NOT use your training knowledge. Do NOT invent numbers, models or facts. "
+        f"If the answer is not in the context, say so.\n\nQuestion: {question}"
+    )
     response = await client.chat.completions.create(
         model=model,
         messages=[
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": question},
+            {"role": "user", "content": user_message},
         ],
-        temperature=TEMPERATURE,
+        temperature=0.0,  # deterministic — reduces hallucination in small models
         max_tokens=ANSWER_MAX_TOKENS,
     )
     usage = response.usage
