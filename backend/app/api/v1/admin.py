@@ -52,7 +52,7 @@ async def pull_ollama_model(
         raise HTTPException(status_code=400, detail="model is required")
     # Validate: only allow ollama model names (alphanumeric, colon, dash, dot)
     import re
-    if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9:._-]{0,99}$', model):
+    if not re.match(r'^[a-zA-Z0-9][a-zA-Z0-9:._/\-]{0,99}$', model):
         raise HTTPException(status_code=400, detail="Invalid model name")
 
     background_tasks.add_task(_pull_model_bg, model)
