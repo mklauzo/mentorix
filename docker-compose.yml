@@ -96,7 +96,11 @@ services:
   # ── Redis ─────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    <<: *common-security
+    # no-new-privileges:true breaks gosu (setuid binary used by Redis entrypoint to drop to redis user)
+    security_opt:
+      - no-new-privileges:false
+    cap_drop:
+      - ALL
     cap_add:
       - SETGID
       - SETUID
