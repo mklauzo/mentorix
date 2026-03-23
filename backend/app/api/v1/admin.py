@@ -149,6 +149,14 @@ async def fetch_provider_models(
             {"id": "claude-3-opus-20240229"},
         ]}
 
+    if provider == "bielik":
+        # Bielik has no public models-list endpoint — return known models
+        return {"models": [
+            {"id": "Bielik-11B-v2.3-Instruct"},
+            {"id": "Bielik-4.5B-v3.0-Instruct"},
+            {"id": "Bielik-11B-v2.2-Instruct"},
+        ]}
+
     raise HTTPException(400, "Unknown provider")
 
 

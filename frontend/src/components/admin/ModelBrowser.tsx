@@ -19,6 +19,9 @@ const BUILTIN_MODELS: Record<string, ProviderModel[]> = {
     { id: 'mistral' },
     { id: 'gemma3' },
     { id: 'deepseek-r1:8b' },
+    { id: 'speakleash/bielik-11b-v2.3-instruct:Q4_K_M' },
+    { id: 'speakleash/bielik-11b-v2.3-instruct:Q8_0' },
+    { id: 'speakleash/bielik-4.5b-v3.0-instruct:Q4_K_M' },
     { id: 'nomic-embed-text' },
     { id: 'nomic-embed-text:v1.5' },
     { id: 'mxbai-embed-large' },
@@ -42,6 +45,11 @@ const BUILTIN_MODELS: Record<string, ProviderModel[]> = {
     { id: 'gemini-1.5-pro', builtin: true },
     { id: 'gemini-1.5-flash', builtin: true },
   ],
+  bielik: [
+    { id: 'Bielik-11B-v2.3-Instruct', builtin: true },
+    { id: 'Bielik-4.5B-v3.0-Instruct', builtin: true },
+    { id: 'Bielik-11B-v2.2-Instruct', builtin: true },
+  ],
 }
 
 const PROVIDER_META = [
@@ -49,6 +57,7 @@ const PROVIDER_META = [
   { key: 'openai', label: '☁ OpenAI', desc: 'wymaga klucza sk-...', needsKey: true },
   { key: 'anthropic', label: '🔵 Anthropic', desc: 'wymaga klucza sk-ant-...', needsKey: true },
   { key: 'gemini', label: '🟢 Gemini', desc: 'wymaga klucza AIza...', needsKey: true },
+  { key: 'bielik', label: '🇵🇱 Bielik', desc: 'polski LLM, wymaga klucza API', needsKey: true },
 ]
 
 interface Props {

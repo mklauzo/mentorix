@@ -269,6 +269,37 @@ async def _generate_gemini(
     }
 
 
+async def _generate_bielik(
+    question: str,
+    system_prompt: str,
+    model: str,
+    api_key: str | None,
+) -> dict:
+    key = api_key or ""
+    if not key:
+        raise ValueError("Brak klucza Bielik API. Ustaw go w ustawieniach profilu.")
+    client = AsyncOpenAI(
+        base_url="https://api.bielik.ai/v1",
+        api_key=key,
+    )
+    response = await client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": question},
+        ],
+        temperature=TEMPERATURE,
+        max_tokens=ANSWER_MAX_TOKENS,
+    )
+    usage = response.usage
+    return {
+        "answer": response.choices[0].message.content or "",
+        "input_tokens": usage.prompt_tokens if usage else 0,
+        "output_tokens": usage.completion_tokens if usage else 0,
+        "total_tokens": usage.total_tokens if usage else 0,
+    }
+
+
 async def _generate_anthropic(
     question: str,
     system_prompt: str,
@@ -314,6 +345,8 @@ async def generate_answer(
             result = await _generate_anthropic(question, system_prompt, model, api_key)
         elif model.startswith("gemini-"):
             result = await _generate_gemini(question, system_prompt, model, api_key)
+        elif model.startswith("Bielik-"):
+            result = await _generate_bielik(question, system_prompt, model, api_key)
         else:
             result = await _generate_openai(question, system_prompt, model, api_key)
     except HTTPException:
